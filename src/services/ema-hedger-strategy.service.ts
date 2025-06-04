@@ -6,15 +6,17 @@ import { OrderManagerService } from './order-manager.service';
 @Injectable()
 export class EMAHedgerStrategyService {
   private readonly logger = new Logger(EMAHedgerStrategyService.name);
-  private readonly emaPeriod = 50; // Период EMA
-  private readonly orderSize = 100; // Размер ордера в USDT
+  private readonly emaPeriod = 130; // Период EMA
+  private readonly orderSizePercent = 1; // 1% от баланса на каждый вход
+  private readonly timeframe = '5m'; // Таймфрейм
+  private readonly maxSymbols = 150; // Топ 150 монет
 
   constructor(
     private emaCalculator: EMACalculatorService,
     private orderManager: OrderManagerService,
   ) {
     this.logger.log('🎯 EMA Hedger Strategy инициализирован');
-    this.logger.log(`📊 Настройки: EMA ${this.emaPeriod}, Размер ордера ${this.orderSize} USDT`);
+    this.logger.log(`📊 Настройки: EMA ${this.emaPeriod}, ${this.orderSizePercent}% от баланса на вход, ${this.timeframe}, топ ${this.maxSymbols} монет`);
   }
 
   // Основная логика обработки свечи
@@ -46,15 +48,22 @@ export class EMAHedgerStrategyService {
     }
   }
 
+  // Рассчитать размер ордера (1% от баланса)
+  private calculateOrderSize(currentPrice: number): number {
+    const balance = this.orderManager.getBalance();
+    const orderSizeUSDT = balance * (this.orderSizePercent / 100);
+    return orderSizeUSDT / currentPrice;
+  }
   // Обработка сигналов пересечения EMA
   private async handleEMASignal(signal: EMASignal): Promise<void> {
     const { symbol, type, currentPrice } = signal;
     const position = this.orderManager.getPosition(symbol);
-    const quantity = this.orderSize / currentPrice;
+    const quantity = this.calculateOrderSize(currentPrice);
 
     this.logger.log(`\n🎯 === СИГНАЛ EMA для ${symbol} ===`);
     this.logger.log(`📈 Тип: ${type === 'CROSS_UP' ? '🟢 ПЕРЕСЕЧЕНИЕ СНИЗУ ВВЕРХ' : '🔴 ПЕРЕСЕЧЕНИЕ СВЕРХУ ВНИЗ'}`);
     this.logger.log(`💰 Цена: ${currentPrice.toFixed(4)} USDT`);
+    this.logger.log(`📦 Размер ордера: ${this.orderSizePercent}% от баланса = ${quantity.toFixed(4)}`);
 
     if (type === 'CROSS_UP') {
       // Пересечение снизу вверх - открываем LONG
@@ -62,7 +71,7 @@ export class EMAHedgerStrategyService {
       if (!position || position.totalLongSize === 0) {
         // ПЕРВИЧНЫЙ ВХОД В ЛОНГ
         this.logger.log(`🚀 ДЕЙСТВИЕ: Открываем ПЕРВИЧНЫЙ ЛОНГ`);
-        this.logger.log(`📦 Размер: ${quantity.toFixed(4)} (${this.orderSize} USDT)`);
+        this.logger.log(`📦 Размер: ${quantity.toFixed(4)} (${this.orderSizePercent}% от баланса)`);
         this.orderManager.openEntryLongOrder(symbol, currentPrice, quantity);
         this.logger.log(`✅ ПЕРВИЧНЫЙ ЛОНГ ОТКРЫТ`);
       } else {
@@ -142,13 +151,13 @@ export class EMAHedgerStrategyService {
       
       // Усредняемся если цена упала более чем на 1% от средней цены лонгов
       if (priceDropPercent > 1.0) {
-        const quantity = this.orderSize / currentPrice;
+        const quantity = this.calculateOrderSize(currentPrice);
         
         this.logger.log(`\n📊 === УСРЕДНЕНИЕ для ${symbol} ===`);
         this.logger.log(`📉 ПРИЧИНА: Цена упала на ${priceDropPercent.toFixed(1)}% от средней цены лонгов`);
         this.logger.log(`📊 Средняя цена лонгов: ${position.averageLongPrice.toFixed(4)}`);
         this.logger.log(`📊 Текущая цена: ${currentPrice.toFixed(4)}`);
-        this.logger.log(`📦 Добавляем лонг: ${quantity.toFixed(4)} (${this.orderSize} USDT)`);
+        this.logger.log(`📦 Добавляем лонг: ${quantity.toFixed(4)} (${this.orderSizePercent}% от баланса)`);
         
         this.orderManager.openAverageLongOrder(symbol, currentPrice, quantity);
         
@@ -175,7 +184,9 @@ export class EMAHedgerStrategyService {
     return {
       strategy: 'EMA Hedger v2.0',
       emaPeriod: this.emaPeriod,
-      orderSize: this.orderSize,
+      orderSizePercent: this.orderSizePercent,
+      timeframe: this.timeframe,
+      maxSymbols: this.maxSymbols,
       stats,
       emaTracking: emaStats.trackedSymbols,
       activePositions: positions.map(p => ({

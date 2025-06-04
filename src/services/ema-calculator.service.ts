@@ -13,7 +13,7 @@ export class EMACalculatorService {
   }
 
   // Обновляем EMA на новой свече
-  updateEMA(kline: KlineData, period: number = 50): EMAData | null {
+  updateEMA(kline: KlineData, period: number = 130): EMAData | null {
     const symbol = kline.symbol;
     const price = parseFloat(kline.close);
     
@@ -63,7 +63,7 @@ export class EMACalculatorService {
   }
 
   // Детекция пересечения цены и EMA
-  detectEMACrossing(kline: KlineData, period: number = 50): EMASignal | null {
+  detectEMACrossing(kline: KlineData, period: number = 130): EMASignal | null {
     const symbol = kline.symbol;
     const currentPrice = parseFloat(kline.close);
     const previousPrice = parseFloat(kline.open);
